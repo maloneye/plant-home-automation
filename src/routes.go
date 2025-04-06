@@ -1,25 +1,25 @@
-package plants
+package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 )
 
-type home struct {
-}
-
 func mapRoutes(mux *http.ServeMux) {
-	mux.Handle("/", &home{})
+	mux.HandleFunc("/", home)
+	mux.HandleFunc("/greet", greet)
 }
 
-func (h *home) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func home(writer http.ResponseWriter, request *http.Request) {
 	if request.RequestURI != "/" {
 		writer.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	switch request.Method {
-	case "GET":
+	case http.MethodGet:
 		_, e := writer.Write([]byte("home"))
 		if e != nil {
 			log.Print(e)
@@ -27,4 +27,49 @@ func (h *home) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	default:
 		writer.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func greet(writer http.ResponseWriter, request *http.Request) {
+	if request.RequestURI != "/greet" {
+		writer.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	switch request.Method {
+	case http.MethodPost:
+		// deserialize request
+		var c Client
+		e := json.NewDecoder(request.Body).Decode(&c)
+		if e != nil {
+			sendError(writer, e.Error())
+			return
+		} else if c.Id == "" || c.Endpoint == "" {
+			sendError(writer, "request json is in the incorrect format")
+			return
+		}
+
+		// add to clients map
+		e = addClient(&c)
+		if e != nil {
+			sendError(writer, e.Error())
+			return
+		}
+
+		writer.WriteHeader(http.StatusOK)
+		reply := fmt.Sprintf("%s client registered", c.Id)
+		writer.Write([]byte(reply))
+
+	default:
+		writer.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func sendError(writer http.ResponseWriter, errorStr string) {
+	response := &ErrorResponse{Error: errorStr}
+	bytes, e := response.Serialize()
+	if e != nil {
+		panic(e)
+	}
+
+	http.Error(writer, string(bytes), http.StatusBadRequest)
 }
